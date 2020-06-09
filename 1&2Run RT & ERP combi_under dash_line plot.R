@@ -1,5 +1,5 @@
 
-
+# This script combines multiple inputs and spits out nice EEG plots. 
 # Let obtain RT where it is sign. and add them as a geom_line to refelct that
 # on the currect diff waves plot.
 # Remember, the df should include all ERP vars and associated conditions RTs.
