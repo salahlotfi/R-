@@ -8,7 +8,7 @@
 
 
 
-# false discovery rate and BY are really good methods, apparently better than bonferroni.
+# See the methods below to find the appropriate one.
 
 options(scipen=999)  # to remove scientific notation.
 
