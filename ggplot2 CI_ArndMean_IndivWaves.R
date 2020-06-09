@@ -1,4 +1,4 @@
-
+# This long script preprocess RT data and provides statistical analysis per subject. 
 # Detach multiple libraries all at once.
 Vectorize(detach)(name=paste0("package:", c("Hmisc","survival","splines")), unload=TRUE, character.only=TRUE)
 
