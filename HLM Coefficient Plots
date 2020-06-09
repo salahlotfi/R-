@@ -1,0 +1,228 @@
+
+
+my_data <- read.csv("C:/Users/slotfi/Documents/R/HLM/2ndRun_AllGoodData.csv",header = TRUE)
+my_data <- read.csv("C:/Users/slotfi/Documents/R/HLM/0_1Run_SH_Clean_ERNCz30100_GrpVars.csv",header = TRUE)
+my_data <- read.csv("C:/Users/slotfi/Documents/R/HLM/1Run_P3bFCs_3548_wo_Outliers_NoFlag.csv",header = TRUE)
+my_data <- read.csv("C:/Users/slotfi/Documents/R/HLM/WMERP_HLM.csv",header = TRUE)
+
+
+# If you would like to run the data on a SUBSET of data use this code;
+aov.sub <- aovp(Value ~ Sample, subset(my_data,my_data$SafeShock == "Safe")  )
+
+options(scipen=999, digits = 4) # DROP scientific notation
+my_data$SafeShock = as.factor (my_data$SafeShock) # changing any variable to a factor. 
+
+inclusionlist = c(203,205,208,212,222)
+my_data1 = mutate (my_data, Inclusion = ifelse (Subject %in% inclusionlist,1,0))
+
+library(lme4) # load library %%% to do lmer
+library(arm) # convenience functions for regression in R
+library(psych)
+library(nlme) # for gls function (fixed effect) ### to do lme
+library(lmerTest)
+library(car)
+library(ggplot2)
+library(dplyr)
+
+#### THIS is something new to test for FERP data. 
+modelRnd2 = lmer(RT_woOutlier ~   Condition + (1|Subject) + (1|TimeSeries) + (Condition|Subject),  # RT_PostErrorDiff works as a Time # AveFs3040
+                 data=subset(my_data1, my_data1$Subject != 137 & my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+                 ),
+                 REML=TRUE)
+# get means great.
+by(data = my_data$RT, INDICES = my_data$Conditions, FUN = mean)
+
+
+# THis is Great 
+my_data <- my_data %>% 
+  group_by(Subject,code) %>% 
+  mutate(ERNCz30100_GrpMean = mean(ERNCz30100))
+
+detach(package:Rmisc)
+detach(package:plyr)
+
+my_data1 =my_data %>% filter (Conditions == "Abs60") 
+my_data1 <- my_data %>% 
+  group_by(Subject,Conditions) %>% mutate(RT_CondiMean = mean(RT))
+
+my_data1 = mutate (my_data, ReacProc_fac = ifelse (ReacProc %in% inclusionlist,1,0))
+my_data1 =  my_data1 %>% select (c(4,7,8,9,11))
+
+write.table(my_data1, file="C:/Users/slotfi/Documents/R/HLM/HLM_WMERP_Final.csv", row.names = F, sep=",", )  
+
+# Amazing adding variable with leading row...
+my_data1 <- my_data %>% mutate (RT_PostCong = ifelse(lag(Conditions,1) %in% c(3,6,10,13),RT,""))
+
+modelRnd1 = lmer( STAIT~  factor(IndexQ):factor(Group) + (1|Subject),  # TERNCz30100_GrndMean_Cntr # AveFs3040
+                 data= my_data, #subset(my_data1, my_data1$Subject != 137 & my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+                 #),
+                 REML=TRUE)#,
+#             na.action=na.exclude)
+modelRnd2 = lmer(RT_woOutlier ~   Condition + (1|Subject) + (1|TimeSeries) + (Condition|Subject),  # RT_PostErrorDiff works as a Time # AveFs3040
+                 data=subset(my_data1, my_data1$Subject != 137 & my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+                 ),
+                 REML=TRUE)#,
+#             na.action=na.exclude)
+modelRnd3 = lmer(ERNCz30100 ~   + (1|Subject),  # RT_PostErrorDiff works as a Time # AveFs3040
+                 data=subset(my_data1, my_data1$Subject != 137 & my_data1$code %in% c(231, 251, 331, 351) &
+                                my_data1$RT_NoOutlier != 0
+                 ),
+                 REML=TRUE)#,
+#             na.action=na.exclude)
+summary (modelRnd1)
+as.data.frame(VarCorr(modelRnd1))
+anova (modelRnd3, modelRnd2, modelRnd1)
+display (modelRnd) # This Give AIC and DIC
+anova(modelRnd2) #IDK ??
+rand(modelRnd1)
+
+fit3 <- lm(ocir ~ dass + attention + nonplanning, data = my_data)
+
+## This regression plots are extremely gorgeous...see below.
+# install.packages("ggiraphExtra")
+library(ggiraphExtra)
+
+require(ggiraph)
+require(ggiraphExtra)
+require(plyr)
+ggPredict(fit3,se=TRUE,interactive=TRUE)
+
+my_data$ACC = as.factor(my_data$ACC)
+fit = lm( RT_wo_Outliers ~ TrialsID * ACC *RESP, data=subset (my_data, my_data$Version %in% c("SHORT") 
+                                                              & my_data$Conditions %in% c(3,4,6,7)))
+summary(fit3)
+ggPredict(fit,se=TRUE,interactive=F)
+# similar code
+ggplot( my_data %>% filter(Version %in% c("SHORT") 
+                           & my_data$Conditions %in% c(3,4,6,7)),
+        aes(y=RT_wo_Outliers,x=TrialsID,color=factor(ACC)))
++geom_point()+stat_smooth(method="lm",se=FALSE)
+
+
+
+# compare the random model Including time
+modelRnd = lme(ERNCz30100 ~  RT_NoOutlier + factor(code), 
+               random=~1|Subject,
+               data=subset(my_data1, my_data1$Subject != 137 &
+                             my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+               ),
+               method="REML",
+               na.action = "na.omit")
+
+modelRnd0 = lme(ERNCz30100 ~  1, 
+               random=~1|Subject,
+               data=subset(my_data1, my_data1$Subject != 137 &
+                             my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+               ),
+               method="REML",
+               na.action = "na.omit")
+
+anova (modelRnd0, modelRnd)
+
+my_data2 =  my_data1 %>% filter (Subject != 137 & code %in% c(231, 251, 331, 351))
+my_data2$Condition = as.factor(my_data2$Condition)
+# NON let's set up a graphical structure to compare linear models with mixed models. 
+library(lme4)
+library(ggstatsplot)
+set.seed(123)
+
+# combining the two different plots
+ggstatsplot::combine_plots(
+  # model 1: simple linear model
+  ggstatsplot::ggcoefstats(
+    x = stats::lm(
+      formula = scale(ERNCz30100) ~ scale(RT_NoOutlier) + scale(code),  #  + scale(Condition)
+      data = my_data2
+    ),
+    title = "linear model",
+    stats.label.color = "black",
+    exclude.intercept = FALSE # show the intercept
+  ) +
+    ggplot2::labs(x = parse(text = "'standardized regression coefficient' ~italic(beta)")),
+  # model 2: linear mixed-effects model
+  ggstatsplot::ggcoefstats(
+    x = lme4::lmer(
+      formula = scale(ERNCz30100) ~ scale(RT_NoOutlier) + scale(code) + (1 | Subject),
+      data = my_data2,
+      control = lme4::lmerControl(calc.derivs = FALSE)
+    ),
+    title = "linear mixed-effects model",
+    stats.label.color = "black",
+    exclude.intercept = FALSE
+  ) +
+    ggplot2::labs(
+      x = parse(text = "'standardized regression coefficient' ~italic(beta)"),
+      y = "fixed effects"
+    ),
+  labels = c("(a)", "(b)"),
+  nrow = 2,
+  ncol = 1,
+  title.text = "Relationship between ERN, and RT given conditions"
+)
+
+
+
+# setup linear mixed-effects models with lmerTest (lmerModLmerTest)
+set.seed(123)
+library(lmerTest)
+
+# fit linear mixed model to the ham data:
+fm <-
+  lmerTest::lmer(
+    formula = ERNCz30100_GrndMean_Cntr ~ RT + # ERNCz30100_GrndMean_Cntr
+      (1 | Subject),
+    data = my_data2
+  )
+
+# plot
+ggstatsplot::ggcoefstats(
+  x = fm,
+  title = "linear mixed-effects models with `lmerTest`"
+)
+
+
+# linear model (lm) with categorical data
+
+ggstatsplot::ggcoefstats(
+  x = stats::lm(
+    formula = ERNCz30100_GrndMean_Cntr ~ Condition + RT,
+    data = dplyr::filter(
+      .data = my_data1,
+      Condition %in% c(
+        "ERN_Con20",
+        "ERN_Con60",
+        "ERN_Incon20",
+        "ERN_Incon60",
+        "ERN_Abs20",
+        "ERN_Abs60"
+      )
+    )
+  ),
+  conf.level = 0.95, # changing the confidence levels for confidence intervals
+  sort = "ascending", # sorting the terms of the model based on estimate values
+  label.direction = "both", # direction in which to adjust position of labels (both x and y)
+  ggtheme = ggplot2::theme_gray(), # changing the default theme
+  #stats.label.color = c("#CC79A7", "darkgreen", "#0072B2"), # if using this, make sure there are one less color.
+  title = "ERN estimates by Conditions",
+  subtitle = "Sasali"
+) +
+  # further modification with the ggplot2 commands
+  # note the order in which the labels are entered
+  ggplot2::scale_y_discrete(labels = c("ERN_Con20","ERN_Con60","ERN_Incon20","ERN_Incon60","ERN_Abs20","ERN_Abs60")) +
+  ggplot2::labs(y = "ERN compared btw Conditions)") +
+  ggplot2::theme(axis.title.y = ggplot2::element_text(size = 14, face = "bold"))
+
+library(parameters)
+model_parameters(modelRnd)
+model_parameters(modelRnd1)
+bootstrap_parameters(modelRnd1, iterations = 200, centrality = "mean", 
+                     ci = 0.95, ci_method = "hdi", test = "p") #quantile hdi and equitest and ROPE are Bayesian indeces.  
+my_data$Group = as.factor(my_data$Group)
+res.aov <- anova_test(data = my_data, dv = STAIT, wid = Subject, within = factor(Group))
+get_anova_table(res.aov)
+
+library(ggpubr)
+
+### Ready good easy plots...
+bxp <- ggboxplot(my_data, x = "Index1", y = "STAIT", color = "Group",add = "point")
+bxp
