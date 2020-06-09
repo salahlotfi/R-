@@ -1,0 +1,354 @@
+
+rm(list = ls()) # remove everything from the global enrvironment
+
+# Running Repeated Measure Mixed Models
+
+my_data4 <- read.csv("C:/Users/slotfi/Documents/R/HLM/2Run_Beh_Fnl_CongLeadPostError_WithOutliers_OnlyGood.csv",header = TRUE)
+my_data <- read.csv("C:/Users/slotfi/Documents/R/HLM/1stRun_AllBehData_L&R Flan SglvsGrp levelDiff.csv",header = TRUE)
+my_dataALL <- read.csv("C:/Users/slotfi/Documents/R/HLM/1st&2nd AllVersions BehData.csv",header = TRUE)
+my_data0 <- read.csv("C:/Users/slotfi/Documents/R/HLM/my_dataALL.csv",header = TRUE)
+
+apply(mydata,2,max,na.rm=TRUE); # apply(data, 1=rows & 2=columns, function to apply to either rows or columns, ... )
+
+options(scipen=999) # DROP scientific notation
+my_data$Conditions = as.factor (my_data$Conditions) # changing any variable to a factor. 
+
+library(lme4) # load library %%% to do lmer
+library(arm) # convenience functions for regression in R
+library(psych)
+library(nlme) # for gls function (fixed effect) ### to do lme
+library(lmerTest)
+library(car)
+library(tidyverse)
+
+my_dataAL1L = my_dataALL %>% filter (ACC == 1 & Version == "")
+my_data = my_data %>% mutate(GAD_Diag = ifelse(GAD_Diagnosis == 1, "YES","NO"))
+                                               
+my_dataLG = my_dataLG %>% mutate( TrialsProg = ifelse(TrialsID < 90, 1,
+                                               ifelse(TrialsID < 180, 2,
+                                                      ifelse(TrialsID < 270, 3,
+                                                             ifelse(TrialsID < 360, 4,5)))))
+my_dataALL = my_dataALL %>% mutate( TrialsProg = 
+                              ifelse(TrialsID %in% c(0:90) | TrialsID %in% c(451:540), 1,
+                              ifelse(TrialsID %in% c(91:180) | TrialsID %in% c(541:630), 2,
+                              ifelse(TrialsID %in% c(181:270) | TrialsID %in% c(631:720), 3,
+                              ifelse(TrialsID %in% c(271:360) | TrialsID %in% c(721:810), 4,5)))))
+#### SOMETING NEW
+modelRnd2 = lmer(RT_woOutlier ~   Condition + (1|Subject) + (1|TimeSeries) + (Condition|Subject),  # RT_PostErrorDiff works as a Time # AveFs3040
+                 data=subset(my_data1, my_data1$Subject != 137 & my_data1$code %in% c(231, 251, 331, 351)   #& my_data$Inclusion_ERN == 1
+                 ),
+                 REML=TRUE)
+
+modelFix = gls (RT_wo_Outliers ~ factor(Conditions),
+                data=my_data4,  #subset(my_data, my_data$ACC == "1"),
+                #method= "REML",
+                na.action = "na.omit")
+summary(modelFix)
+ACF(modelFix,
+    form = ~ TrialsID | Subject)
+
+modelRnd = lme (RT_wo_Outliers ~ factor(Conditions), random = ~1 | Subject, ###this is random model with a forced compound symmetry. (postive cov matrix)
+                data=my_data4,
+                #method= "REML",
+                na.action = "na.omit")
+ACF(modelRnd)
+# you need this ACF value gls = 0.375 nlm = 0.14586468
+# for 1stRunBehAll59: gls =  0.3743659   and nlm = 0.17011945
+modelFixRM = gls (RT ~ Conditions,   #RT_wo_Outliers
+                  correlation = corAR1 (form = ~ TrialsID | Subject,
+                                        value = 0.374),
+                  data=my_data,
+                  method= "REML",
+                  na.action = "na.omit")
+Anova(modelFixRM)
+
+modelRndRM = lme (RT ~ Conditions, random = ~1 | Subject,
+                  correlation = corAR1 (form = ~ TrialsID | Subject,
+                                        value = 0.17),
+                  data=my_data1,
+                  method= "REML",
+                  na.action = "na.omit")
+Anova(modelRndRM)
+
+library(multcompView)
+library(lsmeans)
+library(multcomp)
+
+marginal = lsmeans(modelRndRM,
+                   ~ Conditions)
+
+cld(marginal,
+    alpha   = 0.05,
+    Letters = letters,     ### Use lower-case letters for .group
+    adjust  = "tukey")     ###  Tukey-adjusted comparisons
+
+# Interaction plot
+library(rcompanion)
+
+Sum = groupwiseMean(PSWQ ~ Group + TIME,
+                    data   = my_data1,
+                    conf   = 0.95,
+                    digits = 3,
+                    traditional = T, # with no missing, use F, T. 
+                    percentile  = F)
+
+library(ggplot2)
+
+pd = position_dodge(.2)
+
+ggplot(Sum, aes(x =    TIME,
+                y =    Mean,
+                color = Group)) +
+  geom_errorbar(aes(ymin=Trad.lower, # Percentile.lower
+                    ymax=Trad.upper),
+                width=.2, size=0.7, position=pd) +
+  geom_point(shape=15, size=4, position=pd) +
+  theme_bw() +
+  theme(axis.title = element_text(face = "bold")) +
+  ylab("RT OutLiers ")
+
+SumSE <- my_data1 %>%
+  split(.$TIME) %>%
+  map(~summarySEwithin(data = ., measurevar = "PSWQ",
+                       withinvars = "Group", idvar = "SubjectID"))
+WSCI <- map_df(SumSE, extract) %>%
+  mutate(
+    TIME = rep(unique(my_data1$TIME), each = 2) 
+    #Note, you'll have to change 2 to match the number of conditions
+  )
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+
+my_data %>%
+  group_by(Subject) %>%
+  get_summary_stats(GAD_Diagnosis, type = "mean_sd")
+
+bxp <- ggboxplot(my_data, x = "Conditions", y = "RT", add = "point")
+bxp
+
+ggqqplot(my_data, "RT", facet.by = "Conditions")
+
+res.aov <- anova_test(data = my_data, dv = RT, wid = Conditions , within = Subject) #wid = TrialsID, 
+get_anova_table(res.aov)
+
+my_data<- my_data %>% mutate(id = seq(1,nrow(my_data),1))
+
+mydata = my_data %>% slice(1:20)
+
+# pairwise comparisons
+pwc <- my_data %>%
+  pairwise_t_test(
+    RT_wo_Outliers ~ Conditions, paired = TRUE,
+    p.adjust.method = "bonferroni"
+  )
+pwc
+
+
+
+library(rcompanion)
+
+my_dataALLIncon = my_data %>% filter (RTout_PostIncon != 0  & Conditions != 1)# & SafeShock == "Shock") & Version == "SHORT"
+my_dataSH = my_data2 %>% filter (RT_wo_Outliers != 0)
+my_data3 = my_data3 %>% mutate (ReacProc1 = str_replace(ReacProc,"PURE","SafePURE"))
+my_dataALL$TrialTypeAll = as.factor(my_dataALL$TrialTypeAll)
+
+Sum = rcompanion::groupwiseMean(RTout_PostIncon ~ factor(TrialTypeAll) + factor(ACC),  # + factor(SafeShock)  + factor(TrialsProg) + factor(Version)
+                    data   =  my_dataALLIncon, # subset (my_data, my_data$Version %in% c("SHORT") & my_data$ACC == 1 ),  # my_data4$SafeShock == "Shock" & & my_dataALLabs$Conditions %in% c(2,5)
+                    conf   = 0.95,
+                    digits = 3,
+                    traditional = F, # with no missing, use F, T. 
+                    percentile  = T)
+Sum
+library(ggplot2)
+
+pd = position_dodge(.2)
+
+ggplot(Sum, aes(x =    TrialTypeAll,
+                y =    Mean, 
+                color = factor(ACC))) + # factor(SafeShock)
+  geom_errorbar(aes(ymin=Percentile.lower, # Percentile.lower Trad.lower
+                    ymax=Percentile.upper),
+                width=.2, size=0.7, position=pd) +
+  geom_point(shape=15, size=4, position=pd) +
+  theme_bw() +
+  theme(axis.title = element_text(face = "bold")) +
+  ylab("1st SHORT PostIncon Slowing RT_noOutliers & 95% CL")
+#+   facet_grid(~Version)
+
+
+# for reproducibility and data
+set.seed(123)
+library(WRS2)
+
+# plot  Absolutely make sure that Variables of interest are define as Factors...
+## install.packages(pkgs = "ggstatsplot")
+## ggwithinstats
+ggstatsplot::ggbetweenstats(
+  data = my_dataLG,
+  x = TrialType,
+  y = RT_wo_Outliers,
+  pairwise.comparisons = F, # show pairwise comparison test results
+  #pairwise.annotation = "p.value", # how do you want to annotate the pairwise comparisons
+  p.adjust.method = "fdr", # method :   'arg' should be one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+  title = "Shock RT_wo_Outliers",
+  #caption = "Data source: `WRS2` R package",
+  ggtheme = ggthemes::theme_fivethirtyeight(),
+  ggstatsplot.layer = FALSE,
+  messages = FALSE
+  )
+
+my_dataRMV5 = my_dataRMV %>% slice (0:500) 
+
+## Lets grab random sample of 100 from each condition.
+my_dataRMV = my_data1 %>% group_by(Conditions) %>% do(sample_n(.,100))
+my_dataRMV = as.data.frame(my_dataRMV)
+
+
+my_dataALL$TrialType = as.factor(my_dataALL$TrialType)
+my_dataALL$TrialTypeAll = as.factor(my_dataALL$TrialTypeAll)
+
+# ggwithinstats   
+ggstatsplot::ggbetweenstats(
+  data = dplyr::filter(
+    .data = my_dataALLIncon,
+    ACC %in% c(1) # define each facet here...
+  ),
+  x = TrialTypeAll,
+  y = RTout_PostIncon, # RT_wo_Outliers
+  pairwise.comparisons = TRUE, # show pairwise comparison test results
+  p.adjust.method = "fdr", # method :   'arg' should be one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+  title = "Short RT_PostIncong Correc",
+  #caption = "Data source: `WRS2` R package",
+  ggtheme = ggthemes::theme_fivethirtyeight(),
+  # removing palette & package will produce colorful plots too.
+  palette = "Darjeeling1",  # default_jama, Royal1
+  package = "wesanderson",
+  ggstatsplot.layer = FALSE,
+  messages = FALSE)
+#+ facet_grid(~ACC)
+
+ #  + # further modification outside of ggstatsplot
+   # ggplot2::coord_cartesian(ylim = c(180, 1370)) +
+    #ggplot2::scale_y_continuous(breaks = seq(180, 1370, by = 50)))
+
+my_data3 =  my_data3 %>%
+  group_by (Subject, ReacProc) %>%
+  mutate(ReacProcAveErr = (1 - mean(ACC))*100)
+
+my_data1$TrialsProg = as.factor(my_data1$TrialsProg)
+my_data3$TrialTypeAll = as.factor(my_data3$TrialTypeAll)
+my_data3$SafeShock = as.factor(my_data3$SafeShock)
+
+# for reproducibility
+set.seed(123)
+my_data1 = my_data %>% filter (ACC == 1)
+my_data = my_data %>% mutate(TrialTypeAve = ifelse(TrialType.1 == "Con20" | TrialType.1 == "Con60","Congruent",
+                                                    ifelse(TrialType.1 == "Incon20" | TrialType.1 == "Incon60","Incongruent","PURE")))
+
+# Can run within and between stats with multipe Facest...
+ggstatsplot::grouped_ggbetweenstats(
+  data = dplyr::filter(
+    .data = my_data1,
+    TrialTypeAve %in% c("Congruent", "Incongruent") # define each facet here...
+  ),
+  x = GAD_Diag,
+  y = RT_wo_Outliers, #RT_wo_Outliers
+  grouping.var = TrialTypeAve, # grouping variable
+  pairwise.comparisons = TRUE, # display significant pairwise comparisons
+  pairwise.annotation = "p.value", # how do you want to annotate the pairwise comparisons
+  p.adjust.method = "fdr", # method :   'arg' should be one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+  # adding new components to `ggstatsplot` default
+  ggplot.component = list(ggplot2::scale_y_continuous(sec.axis = ggplot2::dup_axis())),
+  k = 3,
+  title.prefix = "GOOD (n=82) Safe or Shock",
+  # caption = substitute(paste(italic("Source"), ":IMDb (Internet Movie Database)")),
+  palette = "Darjeeling1",  # default_jama, Royal1, GrandBudapest1
+  package = "wesanderson", # ggsci
+  messages = FALSE,
+  #plotgrid.args = list(nrow = 2),
+  title.text = "RT as a function of TriaTypes and Time Elapsed"
+)
+
+## Choice of color palette from "wesanderson" package. 
+# BottleRocket1, BottleRocket2, Rushmore1, Royal1, Royal2, Zissou1, Darjeeling1, Darjeeling2, Chevalier1 , FantasticFox1
+# , Moonrise1, Moonrise2, Moonrise3, Cavalcanti1, GrandBudapest1, GrandBudapest2,IsleofDogs1, IsleofDogs2
+
+my_data1 %>%
+  group_by(GAD_Diag) %>%
+  summarise(RT_wo_Outliers = mean())
+my_data19$Days = as.factor(my_data19$Days)
+my_data19$row_num <- seq.int(nrow(my_data19))
+
+## Scatterplot and correlation stats##
+ggstatsplot::ggscatterstats(
+  data   = my_data19, #subset (my_data4, my_data4$SafeShock == "Shock" & my_data4$RT_wo_Outliers != 0),  # my_data4$SafeShock == "Shock" &
+  x = row_num,
+  y = Infected,
+  xlab = "Days since the outbreak in Iran",
+  ylab = "Number of Deaths so far",
+  title = "Understanding the extend to which it occures",
+  messages = FALSE
+)
+
+my_data4$TrialTypeAll = as.factor(my_data4$TrialTypeAll)
+my_data191 = my_data19 %>% filter (Deaths != 0)
+my_data191 = my_data191 %>% select (-Days, -Infected, -Country)
+## Scatterplot and correlation stats ##
+## with multipe facets##
+ggstatsplot::grouped_ggscatterstats(
+  data = dplyr::filter(
+    .data = my_data19, 
+    Country %in% c("USA", "IRAN")
+  ),
+  x = Days,
+  y = Infected,
+ # label.var = title,
+  #label.expression = length > 200,
+  k = 3, # no. of decimal places in the results
+  xfill = "#E69F00",
+  yfill = "#8b3058",
+  xlab = "Since the first Day",
+  grouping.var = Country, # grouping variable
+  title.prefix = "Country",
+  ggtheme = ggplot2::theme_grey(),
+  ggplot.component = list(ggplot2::scale_x_continuous(sec.axis = ggplot2::dup_axis())),
+  messages = FALSE,
+  #plotgrid.args = list(nrow = 2),
+  title.text = "?????????? ???????? ???? ???? ?????? ?????? ???? ???? ????????"
+)
+#   ggplot.component = list(ggplot2::scale_y_continuous(sec.axis = ggplot2::dup_axis())),
+#   ggplot.component = list(ggplot2::scale_x_continuous(breaks = seq(2, 9, 1), limits = (c(2, 9)))
+
+my_data19[1:4,1]
+my_data191.colnames
+colnames(my_data191)
+
+write.table(my_data1, file="C:/Users/slotfi/Documents/R/HLM/WMERP_HLM2.csv", row.names = F, sep=",", )  
+write.table(dfAll, file="C:/Users/slotfi/Documents/R/Loop/SHK_Entire ERPS 83Data/2Run_GrndMtxBins/2Run_GrndMtxBins_All79D&RTbehwos_No20578_225.csv", row.names = F, sep=",") 
+
+# Amazing adding variable with leading row...
+my_dataALL <- my_dataALL %>% mutate (RTout_PostAbs = ifelse(lag(Conditions,1) %in% c(2,5,9,12),RT_wo_Outliers,""))
+my_dataALL <- my_dataALL %>% mutate (RTout_PostCon = ifelse(lag(Conditions,1) %in% c(3,6,10,13),RT_wo_Outliers,""))
+my_dataALL <- my_dataALL %>% mutate (RTout_PostIncon = ifelse(lag(Conditions,1) %in% c(4,7,11,14),RT_wo_Outliers,""))
+
+
+## This regression plots are extremely gorgeous...see below.
+install.packages("ggiraphExtra")
+library(ggiraphExtra)
+
+require(ggiraph)
+require(ggiraphExtra)
+require(plyr)
+ggPredict(fit,se=TRUE,interactive=TRUE)
+
+my_data$ACC = as.factor(my_data$ACC)
+fit = lm( RT_wo_Outliers ~ TrialsID * ACC *RESP, data=subset (my_data, my_data$Version %in% c("SHORT") 
+                                                              & my_data$Conditions %in% c(3,4,6,7)))
+summary(fit)
+ggPredict(fit,se=TRUE,interactive=F)
+# similar code
+ggplot( my_data %>% filter(Version %in% c("SHORT") 
+                           & my_data$Conditions %in% c(3,4,6,7)),
+        aes(y=RT_wo_Outliers,x=TrialsID,color=factor(ACC)))
++geom_point()+stat_smooth(method="lm",se=FALSE)
