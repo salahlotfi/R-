@@ -3,7 +3,7 @@
 
 # https://dr-jt.github.io/semoutput/
 
-devtools::install_github("dr-JT/semoutput")
+devtools::install_github("dr-JT/semoutput")  
 
 
 # Required Packages
